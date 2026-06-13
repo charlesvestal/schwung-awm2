@@ -80,3 +80,7 @@ See `0001-swp30-saturate-interpolation.patch` in this directory
   already use `std::clamp`); functionally identical.
 - This is distinct from issue #11976 (envelope release abruptness); it is a
   separate interpolation-overflow defect, though both manifest as "clicks".
+
+---
+
+**Submitted:** https://github.com/mamedev/mame/pull/15505
