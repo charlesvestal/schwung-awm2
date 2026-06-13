@@ -50,21 +50,42 @@ Measured on-device (CM4 @ 1.5 GHz `performance`, not throttled):
   `/data/UserData/schwung`. No PAM, so RT needs the host launched with an rtprio
   limit (root).
 
-## Next steps — to reach realtime (the only viable path)
+## Next steps — to reach realtime
 
-Write a **lean H8S/2655 interpreter** to replace MAME's cycle-accurate one:
-- Computed-goto / threaded dispatch, execute whole instructions at once, drop the
-  sub-state machine + prefetch-pipeline modeling, approximate timing.
-- Target ~2-3× on the H8 (precedent: `schwung-jv880`'s lean core runs realtime on
-  the same CM4). With RT+pin that should clear realtime.
-- **Reuse MAME's SWP30 DSP** as-is (the audio chip is fine and already correct).
-- **Validate bit-against the MAME build** (kept as the golden oracle) so the lean
-  core is provably accurate.
-- Everything else here (module glue, MIDI→SCI, audio ring, aarch64 pipeline,
-  scheduling, ROM handling) carries over unchanged.
+A deep-research pass (2026-06-13, 23 sources, adversarially verified) established:
+- **No off-the-shelf shortcut exists.** No open-source H8/H8S/H8SX JIT/DRC exists
+  anywhere; no standalone/realtime MU-series or SWP30/AWM2/MEG emulator exists
+  outside MAME. The S-YXG50 author calls a real MU/SWP emulation an unsolved
+  "weeks or months" effort. (Negatives are search-bounded but well-supported.)
+- **Correction to earlier notes:** in MAME, only the **MEG effects DSP** is JIT'd
+  via drcuml; the **AWM2 sample/voice engine is plain C++** (`awm2_step`/
+  `mixer_step`). So the SWP30's heaviest loop is already recompiled, and the
+  realtime wall really is the **H8 CPU** — corroborating the profile.
 
-Alternative (definitive but months): an H8→arm64 dynamic recompiler (MAME has
-asmjit/drcuml infra but no H8 backend).
+Credible routes (combine, don't pick one — each is partial):
+1. **Faster H8.** Either (a) a lean interpreter (computed-goto, drop the
+   cycle-accurate sub-state/prefetch model) — ~1.5× proven on a *related* H8
+   (Nuked-SC55, H8/500; transferability partial); or (b) an **H8S→UML drcuml
+   frontend** — MAME's aarch64 DRC backend is already merged + Pi-4-tested
+   (PR #13162, 0.274/0.275) and drcuml is proven retargetable (it already JITs the
+   SWP30 MEG), so only the H8 *frontend* is new work. **RISK:** MAME docs state
+   "interruptibility and DRC are entirely incompatible," and the H8 uses the
+   interruptible mid-instruction-restart model — an H8 DRC must drop/work around
+   that (does the MU100 actually need interruptible accesses? open question).
+2. **NEON-vectorize the AWM2 voice loop** (it's plain C++, ~15-27% of cost) — an
+   independent win not requiring any H8 work.
+3. **Multi-core**: H8 on one A72 core, SWP30 audio/MEG on another (MAME's
+   scheduler is serial today → needs surgery, but cores are available).
+4. **RT + compute-core pin** (done; ~+10%).
+
+Reuse MAME's SWP30 DSP as-is; keep the MAME build as the **bit-exact oracle** to
+validate any faster core against. Everything else (module glue, MIDI→SCI, audio
+ring, aarch64 pipeline, ROM handling) carries over unchanged.
+
+Honest effort: still substantial (an H8 frontend or lean core is real,
+bit-accuracy-sensitive work) and not guaranteed to clear realtime with margin —
+but the framework groundwork (arm64 codegen, MEG-as-DRC precedent) is done, so
+it's "write an H8 frontend," not "build a JIT from scratch."
 
 **Recommendation:** the lean-interpreter rewrite is days-to-weeks of hard,
 bit-accuracy-sensitive work for one borderline-realtime module. Worth it only if
