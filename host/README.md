@@ -40,6 +40,23 @@ because both consume the same `m_record_buffer` from the same fixed libs.
 ./verify.sh
 ```
 
+## Live MIDI (no SMF) — step 2
+`--live` injects MIDI from our own code instead of an SMF image device. A
+`MidiInjector` (in `awm2_host.cpp`) feeds raw bytes through a `LiveMidiPort`
+(an `osd::midi_input_port` returned by `create_midi_input`); the midiin device
+polls it at 1500 Hz and clocks the bytes onto the H8 SCI rxd line at 31250 baud.
+The injector supports a deterministic time-gated **schedule** (used here for
+off-device verification) and a lock-free **realtime ring** (`push_realtime`,
+the path the Move module will drive). `-midiin1 <sentinel>` is auto-added so the
+midiin device routes to our port rather than parsing an SMF.
+
+```bash
+awm2_host --live out.wav -- mu100 -rompath <romdir> -video none -sound none \
+    -nothrottle -seconds_to_run 10 -samplerate 48000
+./verify_live.sh   # renders the built-in C-major scale, checks determinism +
+                   # onset timing + pitch (8/8 notes at the scheduled times)
+```
+
 ## Key implementation notes
 - `main()` must pass a program-name element as `args[0]`; MAME's command-line
   parser begins at `args[1]`.
