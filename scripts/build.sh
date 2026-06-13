@@ -95,7 +95,7 @@ make -C "$MAME" linux \
   TARGETOS=linux PTR64=1 NOWERROR=1 \
   NO_X11=1 NO_OPENGL=1 NO_USE_XINPUT=1 USE_BGFX=0 \
   NO_USE_PORTAUDIO=1 NO_USE_PULSEAUDIO=1 NO_USE_PIPEWIRE=1 \
-  ARCHOPTS="-march=armv8-a -mtune=cortex-a72 -fPIC" \
+  ARCHOPTS="-mcpu=cortex-a72 -fPIC ${AWM2_LTO:+-flto=2 -ffat-lto-objects}" \
   PYTHON_EXECUTABLE=python3 \
   SOURCES=src/mame/yamaha/ymmu100.cpp \
   -j"$NPROC" || echo "(mame exe link failed as expected; using the static libs)"
@@ -112,9 +112,10 @@ echo "  objs:      $OBJ"
 
 # --- 4. compile + link dsp.so (SDL-free) -------------------------------------
 echo "Compiling module glue..."
+LTOFLAGS=(); [ -n "${AWM2_LTO:-}" ] && LTOFLAGS=(-flto=2 -ffat-lto-objects)
 CXXFLAGS=(
   -std=c++20 -O2 -fPIC -fno-strict-aliasing
-  -march=armv8-a -mtune=cortex-a72
+  -mcpu=cortex-a72 "${LTOFLAGS[@]}"
   -DNDEBUG -DCRLF=2 -DLSB_FIRST -DFLAC__NO_DLL -DPUGIXML_HEADER_ONLY
   -DASMJIT_STATIC
   -I"$REPO_ROOT/host"
@@ -132,6 +133,7 @@ MAME_OBJS=( "$OBJ/src/mame/mame.o" "$OBJ/generated/mame/mame/drivlist.o" "$OBJ/g
 ARLIBS=$(find "$MAME/scripts" -name '*.a' ! -name 'libbgfx.a' ! -name 'libbimg.a' ! -name 'libbx.a' \
          ! -name 'libqtdbg*' ! -name 'libprecompile.a' | tr '\n' ' ')
 "${CROSS_PREFIX}g++" -shared -o dist/awm2/dsp.so \
+  -mcpu=cortex-a72 "${LTOFLAGS[@]}" \
   build/awm2_plugin.o build/osd_stubs.o "${MAME_OBJS[@]}" \
   -Wl,--start-group $ARLIBS -Wl,--end-group \
   -lpthread -lm -ldl -static-libgcc -static-libstdc++

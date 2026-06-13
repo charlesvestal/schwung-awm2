@@ -212,7 +212,10 @@ struct Awm2Instance {
 	{
 #ifdef __linux__
 		long nc = sysconf(_SC_NPROCESSORS_ONLN);
-		int core = (nc > 1) ? int(nc - 1) : 0;
+		// Pin to a COMPUTE core, not the last one: on the Move (/etc/init.d/move)
+		// the audio DMA/SPI IRQs are pinned to the top core (3), so we'd fight
+		// them there. Use the second-from-top compute core by default.
+		int core = (nc >= 2) ? int(nc - 2) : 0;
 		if (const char *e = getenv("AWM2_CPU")) core = atoi(e);
 		cpu_set_t cs; CPU_ZERO(&cs); CPU_SET(core, &cs);
 		pthread_setaffinity_np(pthread_self(), sizeof(cs), &cs);
