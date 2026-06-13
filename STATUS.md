@@ -62,6 +62,25 @@ A deep-research pass (2026-06-13, 23 sources, adversarially verified) establishe
   `mixer_step`). So the SWP30's heaviest loop is already recompiled, and the
   realtime wall really is the **H8 CPU** — corroborating the profile.
 
+### Stage-0 cost split (on-device CM4 profile, 2026-06-13)
+Bucketed `perf` of the saturated emulation:
+- **H8 CPU ~62%** (54.6% interpreter core + ops, plus ~7% H8-driven memory-handler
+  dispatch a JIT would inline away).
+- **SWP30 DSP only ~9.5%** — its MEG is already drcuml-JIT'd; the AWM2 voice loop is
+  cheap. **Not worth NEON/optimizing.**
+- Fixed floor ~30% (scheduler/timers ~2.5%, MEG *re-JIT churn* ~2-3% [minor bug —
+  recompiles in steady state], sound-stream/rand/libc).
+
+Projection from the 71% (RT+pin) baseline:
+- **H8 JIT ×3 → ~125% realtime (comfortable).**
+- H8 JIT ×2 → ~105% (clears, thin margin).
+- **Lean interpreter ×1.5 → ~92% (still short — NOT enough on its own).**
+
+=> **The JIT is the way.** A lean interpreter alone does not clear realtime; SWP30
+NEON and multi-core are unnecessary (SWP30 is only ~9.5%). Decision: GO for the
+JIT *if* the MU100 is worth the effort; the remaining risk is the
+interruptibility-vs-DRC incompatibility.
+
 Credible routes (combine, don't pick one — each is partial):
 1. **Faster H8.** Either (a) a lean interpreter (computed-goto, drop the
    cycle-accurate sub-state/prefetch model) — ~1.5× proven on a *related* H8
