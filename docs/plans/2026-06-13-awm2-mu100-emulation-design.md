@@ -71,6 +71,24 @@ into H8 SCI rx → run scheduler → write stereo `out.wav`. No render/ui/lua.
 Then diff vs stock-MAME `ref.wav`. Measure CPU cost (cycles per second of
 audio) to predict Move ARM feasibility.
 
+## Viability gate — PASSED (2026-06-13)
+
+User's hard requirement: no audible crackle ("crackling loops is a non-starter").
+
+Built a single-driver MAME subtarget from 0.288 source
+(`make SOURCES=src/mame/yamaha/ymmu100.cpp`) — bit-identical to the brew build —
+to test fixes in-situ against the stock-MAME oracle.
+
+Investigation ruled out (in-situ): loop-seam, DPCM loop state, polyphony/mixing,
+envelope onset/peak. **Root cause:** `streaming_block::step` stored the cubic
+interpolation result in an `s16` without saturation; overshoot near loud peaks
+wrapped (+32767→−32768) = one-sample sign flip = click, only on loud notes.
+
+**Fix:** `patches/0001-swp30-saturate-interpolation.patch` (one line). Verified:
+6-note 3→0 clicks, full GM song 15+→0, piano unchanged. User confirmed clean by
+ear. Authentic (HW saturates) and upstreamable to MAME. **Gate passed; project
+viable.**
+
 ## Open / deferred
 
 - Framework strategy for the actual Move port (vendor MAME core headless vs.
