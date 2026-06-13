@@ -1,0 +1,9 @@
+# build artifacts
+dist/
+build/
+*.o
+*.wav
+# user-supplied ROMs (never commit copyrighted data)
+roms/
+*.zip
+*.7z
