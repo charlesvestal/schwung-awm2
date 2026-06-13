@@ -3,7 +3,19 @@
 // exclude from the headless link. Providing strong definitions here keeps the
 // SDL window/osd objects (and thus libSDL3) out of the binary.
 
+#include <cstdlib>
 #include "modules/osdwindow.h"
+
+// MAME's OSD-core clipboard helper (osdlib_unix) calls into SDL on Linux. We
+// don't link SDL, and the module never uses the clipboard, so satisfy these few
+// SDL symbols with no-op stubs (C ABI). Without them, dlopen() of dsp.so fails
+// with "undefined symbol: SDL_GetClipboardText".
+extern "C" {
+char *SDL_GetClipboardText(void)        { char *p = (char *)std::malloc(1); if (p) p[0] = 0; return p; }
+int   SDL_SetClipboardText(const char *) { return 0; }
+int   SDL_HasClipboardText(void)        { return 0; }
+void  SDL_free(void *p)                 { std::free(p); }
+}
 
 // The base osd_window code references the global `video_config`, normally defined
 // in the SDL osd's video.o. Defining it here keeps the SDL video/window/osd

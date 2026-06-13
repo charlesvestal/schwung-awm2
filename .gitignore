@@ -14,3 +14,4 @@ roms/
 # MAME-generated config from running in-tree
 cfg/
 nvram/
+snap/

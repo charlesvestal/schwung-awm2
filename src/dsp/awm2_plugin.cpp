@@ -232,6 +232,15 @@ struct Awm2Instance {
 	void run_mame()
 	{
 		pin_and_rt_self();
+		// Flush denormals to zero (FTZ/DAZ). MAME 0.288 mixes audio in float and
+		// reverb/decay tails generate denormals, which are pathologically slow on
+		// ARM — a likely cause of the emulation running far below realtime.
+#if defined(__aarch64__)
+		if (!getenv("AWM2_NOFTZ")) {
+			uint64_t fpcr; __asm__ volatile("mrs %0, fpcr" : "=r"(fpcr));
+			fpcr |= (1u << 24); /* FZ */ __asm__ volatile("msr fpcr, %0" :: "r"(fpcr));
+		}
+#endif
 		setenv("SDL_VIDEODRIVER", "dummy", 0);
 		// Search both the module's roms/ subdir (install convention) and the
 		// module dir itself for the user-supplied romset (mu100/swp30/mulcd .zip).
