@@ -10,3 +10,7 @@ roms/
 
 # macOS
 .DS_Store
+
+# MAME-generated config from running in-tree
+cfg/
+nvram/

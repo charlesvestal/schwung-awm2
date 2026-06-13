@@ -57,6 +57,29 @@ awm2_host --live out.wav -- mu100 -rompath <romdir> -video none -sound none \
                    # onset timing + pitch (8/8 notes at the scheduled times)
 ```
 
+## Module plugin (step 3)
+`../src/dsp/awm2_plugin.cpp` implements the Move Anything plugin API v2
+(`move_plugin_init_v2` → create/destroy/on_midi/set_param/get_param/get_error/
+render_block). It boots mu100 once on a background thread (`-nothrottle`, no
+`-seconds_to_run`); the SWP30 mix flows through `add_audio_to_recording` into a
+ring buffer whose backpressure throttles the emulation to real time; the Move's
+`render_block` drains it. `on_midi`/`set_param` inject MIDI in real time via the
+shared `MidiInjector` (`push_realtime`). Native rate is 44100 = the Move rate
+(`MOVE_SAMPLE_RATE`), so no resampling. `set_param` maps params to XG MIDI CCs
+(program/bank → bank-select+PC; reverb/chorus/variation → CC91/93/94; cutoff/
+resonance/attack/release → CC74/71/73/72; volume → CC7).
+
+Ring depth sets output latency (~93 ms now): `-nothrottle` outruns the consumer
+so backpressure pins the ring full; tighten once step-4 perf work lands.
+
+```bash
+./verify_plugin.sh   # builds dsp.dylib + test loader, dlopens it like the Move
+                     # runtime, injects a note, checks audio + param round-trip
+```
+`build_plugin_mac.sh` is the macOS stand-in for the aarch64 Docker build
+(`scripts/build.sh` → `dist/awm2/dsp.so`, step 4). `AWM2_DEBUG=1` logs audio
+chunk/ring activity.
+
 ## Key implementation notes
 - `main()` must pass a program-name element as `args[0]`; MAME's command-line
   parser begins at `args[1]`.

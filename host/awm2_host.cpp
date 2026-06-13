@@ -1,38 +1,30 @@
-// awm2_host.cpp — headless MAME host for the Yamaha MU100 (H8 + SWP30).
+// awm2_host.cpp — off-device verification harness for the Yamaha MU100 host.
 //
-// This is the integration core for the schwung-awm2 module. It boots the MAME
-// `mu100` machine through a custom osd_common_t subclass (no SDL UI), captures
-// the SWP30 stereo master mix via the add_audio_to_recording OSD hook, and
-// writes it to a WAV file from our own code.
+// Boots MAME's mu100 machine headless (shared Mu100OsdBase), captures the SWP30
+// stereo master mix, and renders a MIDI file (or the built-in --live schedule)
+// to WAV from our own code. Output is bit-identical to MAME's own -wavwrite from
+// the same swp30-fixed libs — see verify.sh / verify_live.sh.
 //
-// Verification target (step 1): rendering a MIDI file this way must be
-// bit-identical to MAME's own -wavwrite output from the SAME (swp30-fixed)
-// static libs. That proves our audio tap is correct and is the foundation for
-// the live Move audio bridge (which replaces the WAV writer with a ring buffer).
-//
-// Pattern mirrors ../ensoniq-sd1-source/Source/PluginProcessor.cpp
-// (VstOsdInterface : public osd_common_t + cli_frontend::execute).
+// The same OSD base and MidiInjector drive the Move module (src/dsp/awm2_plugin.cpp);
+// there the WAV writer becomes a ring buffer and the schedule becomes realtime MIDI.
 
-#include "emu.h"
-#include "emuopts.h"
-#include "osdepend.h"
-#include "render.h"                       // render_manager, render_target
-#include "interface/midiport.h"           // osd::midi_input_port
-#include "modules/lib/osdobj_common.h"   // osd_common_t, osd_options
+#include "mu100_osd.h"
 #include "frontend/mame/clifront.h"      // cli_frontend
 
-#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <string>
 #include <vector>
 
-// ----------------------------------------------------------------------------
-// Captured audio sink
-// ----------------------------------------------------------------------------
+using awm2::MidiInjector;
+using awm2::Mu100OsdBase;
+
 namespace {
 
+// ----------------------------------------------------------------------------
+// Captured audio sink (unbounded — offline rendering)
+// ----------------------------------------------------------------------------
 struct AudioCapture {
 	std::vector<int16_t> samples;   // interleaved, `channels` per frame
 	int  channels = 0;
@@ -40,190 +32,29 @@ struct AudioCapture {
 	long frames   = 0;
 };
 
-// ----------------------------------------------------------------------------
-// Live MIDI injector — feeds raw MIDI bytes into the H8 SCI via the OSD MIDI
-// input port, replacing the -midiin1 SMF image device.
-//
-// Two feed modes share one byte stream:
-//   * scheduled  — a sorted (emu-time, byte) list released when machine time
-//                  reaches each entry. Deterministic, used for off-device
-//                  verification (bit-identical across runs).
-//   * realtime   — a single-producer/single-consumer ring pushed from another
-//                  thread, released immediately. This is the path the Move
-//                  module will use; unused in offline rendering.
-// Both are drained by the midiin device's 1500 Hz poll and clocked onto the
-// SCI rxd line at 31250 baud by MAME's existing serial machinery.
-// ----------------------------------------------------------------------------
-struct MidiInjector {
-	struct Ev { double t; uint8_t b; };
-
-	running_machine *machine = nullptr;
-
-	// scheduled (offline, deterministic)
-	std::vector<Ev> sched;     // sorted ascending by t
-	size_t          sched_idx = 0;
-
-	// realtime ring (module use)
-	static constexpr uint32_t RING = 1u << 14;   // 16384, power of two
-	uint8_t               ring[RING];
-	std::atomic<uint32_t> wr{0};
-	std::atomic<uint32_t> rd{0};
-
-	double now() const { return machine ? machine->time().as_double() : 0.0; }
-
-	// --- producer (control thread) ---
-	void push_realtime(uint8_t b)
-	{
-		const uint32_t w = wr.load(std::memory_order_relaxed);
-		const uint32_t n = (w + 1) & (RING - 1);
-		if (n != rd.load(std::memory_order_acquire)) {
-			ring[w] = b;
-			wr.store(n, std::memory_order_release);
-		}
-	}
-
-	// --- consumer (emu thread, via the OSD port) ---
-	bool ready()
-	{
-		if (sched_idx < sched.size() && now() >= sched[sched_idx].t)
-			return true;
-		return rd.load(std::memory_order_acquire) != wr.load(std::memory_order_acquire);
-	}
-
-	int next(uint8_t *out)
-	{
-		if (sched_idx < sched.size() && now() >= sched[sched_idx].t) {
-			*out = sched[sched_idx++].b;
-			return 1;
-		}
-		const uint32_t r = rd.load(std::memory_order_relaxed);
-		if (r != wr.load(std::memory_order_acquire)) {
-			*out = ring[r];
-			rd.store((r + 1) & (RING - 1), std::memory_order_release);
-			return 1;
-		}
-		return 0;
-	}
-
-	void schedule_note(double t_on, double t_off, uint8_t note, uint8_t vel, uint8_t chan = 0)
-	{
-		sched.push_back({ t_on,  uint8_t(0x90 | (chan & 0x0f)) });
-		sched.push_back({ t_on,  note });
-		sched.push_back({ t_on,  vel  });
-		sched.push_back({ t_off, uint8_t(0x80 | (chan & 0x0f)) });
-		sched.push_back({ t_off, note });
-		sched.push_back({ t_off, uint8_t(0) });
-	}
-};
-
-// MAME OSD MIDI input port backed by the injector.
-class LiveMidiPort : public osd::midi_input_port
+class CaptureOsd : public Mu100OsdBase
 {
 public:
-	explicit LiveMidiPort(MidiInjector &inj) : m_inj(inj) {}
-	virtual bool poll() override            { return m_inj.ready(); }
-	virtual int  read(uint8_t *out) override { return m_inj.next(out); }
-private:
-	MidiInjector &m_inj;
-};
+	CaptureOsd(osd_options &options, AudioCapture &cap, MidiInjector *inj)
+		: Mu100OsdBase(options, inj), m_cap(cap) {}
 
-} // namespace
-
-// ----------------------------------------------------------------------------
-// Minimal headless OSD: just enough of osd_interface to boot mu100 and tap audio
-// ----------------------------------------------------------------------------
-class Mu100Osd : public osd_common_t
-{
-public:
-	Mu100Osd(osd_options &options, AudioCapture &cap, MidiInjector *inj)
-		: osd_common_t(options), m_cap(cap), m_inj(inj) {}
-
-	// --- lifecycle -----------------------------------------------------------
-	virtual void init(running_machine &machine) override
+protected:
+	virtual void on_audio(const int16_t *buffer, int frames, int channels, int rate) override
 	{
-		// REQUIRED: initialises MAME's core sound/input/font modules.
-		osd_common_t::init(machine);
-		m_machine = &machine;
-
-		// Select & initialise the OSD provider modules (font/render/sound/input/
-		// midi/...). The base init() does NOT do this — the concrete OSD must.
-		// With -video none/-sound none these resolve to the "none" providers.
-		init_subsystems();
-
-		// The UI/render path dereferences a render target (ui_aspect); with
-		// -video none nothing allocates one, so we must (mirrors SD-1).
-		m_target = machine.render().target_alloc();
-		m_target->set_bounds(640, 480);
-		m_target->set_view(0);
-	}
-
-	virtual void osd_exit() override
-	{
-		if (m_machine != nullptr && m_target != nullptr) {
-			m_machine->render().target_free(m_target);
-			m_target = nullptr;
-		}
-		osd_common_t::osd_exit();
-	}
-
-	virtual void update(bool /*skip_redraw*/) override
-	{
-		// -seconds_to_run drives termination; nothing to do per-frame.
-	}
-
-	// --- input / focus (pure in osd_common_t, must stub) ---------------------
-	virtual void input_update(bool /*relative_reset*/) override {}
-	virtual void check_osd_inputs() override {}
-	virtual void process_events() override {}
-	virtual bool has_focus() const override { return true; }
-
-	// --- sound ---------------------------------------------------------------
-	// Force the master mix to be computed (m_record_buffer populated) regardless
-	// of the chosen OSD sound module, exactly like the SD-1 reference.
-	virtual bool no_sound() override { return false; }
-
-	// The SWP30 stereo master mix arrives here every sound update, as
-	// `samples_this_frame` frames of `outputs_count()` interleaved s16 channels.
-	// This is the SAME buffer MAME's -wavwrite path consumes in the same call.
-	virtual void add_audio_to_recording(const int16_t *buffer, int samples_this_frame) override
-	{
-		if (m_cap.channels == 0 && m_machine != nullptr) {
-			m_cap.channels = int(m_machine->sound().outputs_count());
-			m_cap.rate     = m_machine->sample_rate();
-		}
-		if (m_cap.channels <= 0 || samples_this_frame <= 0)
-			return;
-		const size_t n = size_t(samples_this_frame) * size_t(m_cap.channels);
+		m_cap.channels = channels;
+		m_cap.rate     = rate;
+		const size_t n = size_t(frames) * size_t(channels);
 		m_cap.samples.insert(m_cap.samples.end(), buffer, buffer + n);
-		m_cap.frames += samples_this_frame;
-	}
-
-	// --- live MIDI -----------------------------------------------------------
-	// Called by the midiin image device's call_load() when -midiin1 names
-	// something that isn't a loadable SMF. We hand back a port backed by our
-	// injector; the device then polls it at 1500 Hz and clocks bytes onto the
-	// H8 SCI rxd line. Falls back to the base (no-op) port when not in live mode.
-	virtual std::unique_ptr<osd::midi_input_port> create_midi_input(std::string_view name) override
-	{
-		if (m_inj) {
-			m_inj->machine = m_machine;
-			return std::make_unique<LiveMidiPort>(*m_inj);
-		}
-		return osd_common_t::create_midi_input(name);
+		m_cap.frames += frames;
 	}
 
 private:
-	running_machine *m_machine = nullptr;
-	render_target   *m_target  = nullptr;
-	AudioCapture    &m_cap;
-	MidiInjector    *m_inj     = nullptr;
+	AudioCapture &m_cap;
 };
 
 // ----------------------------------------------------------------------------
 // Canonical 16-bit PCM WAV writer (matches MAME's wav_open layout)
 // ----------------------------------------------------------------------------
-namespace {
-
 static void put_u32(FILE *f, uint32_t v) { uint8_t b[4] = { uint8_t(v), uint8_t(v>>8), uint8_t(v>>16), uint8_t(v>>24) }; fwrite(b,1,4,f); }
 static void put_u16(FILE *f, uint16_t v) { uint8_t b[2] = { uint8_t(v), uint8_t(v>>8) }; fwrite(b,1,2,f); }
 
@@ -266,8 +97,7 @@ static bool write_wav(const char *path, const AudioCapture &cap)
 //
 //   With --live, MIDI is injected from our own code (no SMF). We build a
 //   deterministic demo schedule and feed it through the OSD MIDI input port,
-//   so -midiin1 must name a non-file sentinel (auto-added if absent). This
-//   exercises the same live path the Move module will drive in real time.
+//   so -midiin1 must name a non-file sentinel (auto-added if absent).
 // ----------------------------------------------------------------------------
 int main(int argc, char **argv)
 {
@@ -322,7 +152,7 @@ int main(int argc, char **argv)
 	int res = 0;
 	{
 		osd_options options;
-		Mu100Osd osd(options, cap, inj_ptr);
+		CaptureOsd osd(options, cap, inj_ptr);
 		osd.register_options();
 		cli_frontend frontend(options, osd);
 		res = frontend.execute(mame_args);
