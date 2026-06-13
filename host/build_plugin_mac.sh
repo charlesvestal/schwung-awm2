@@ -34,36 +34,33 @@ MAME_MAIN_OBJS=(
   "$MAME_OBJ/generated/mame/mame/drivlist.o"
   "$MAME_OBJ/generated/version.o"
 )
+# SDL-free (matches the aarch64 dsp.so): the patched register_options() pulls no
+# SDL/bgfx modules, so those libs and the GUI frameworks drop out.
 LIBS=(
   "$REL/mame_mame/libmame_mame.a" "$REL/libfrontend.a" "$REL/mame_mame/liboptional.a"
-  "$REL/libemu.a" "$REL/libosd_sdl3.a" "$REL/libqtdbg_sdl3.a"
+  "$REL/libemu.a" "$REL/libosd_sdl3.a"
   "$REL/mame_mame/libformats.a" "$REL/mame_mame/libdasm.a" "$REL/libutils.a"
   "$REL/libexpat.a" "$REL/libsoftfloat3.a" "$REL/libwdlfft.a" "$REL/libymfm.a"
   "$REL/libjpeg.a" "$REL/lib7z.a" "$REL/libasmjit.a" "$REL/liblua.a"
   "$REL/liblualibs.a" "$REL/liblinenoise.a" "$REL/libzlib.a" "$REL/libzstd.a"
   "$REL/libflac.a" "$REL/libutf8proc.a" "$REL/libsqlite3.a" "$REL/libportaudio.a"
-  "$REL/libportmidi.a" "$REL/libbgfx.a" "$REL/libbimg.a" "$REL/libbx.a"
-  "$REL/libocore_sdl3.a"
+  "$REL/libportmidi.a" "$REL/libocore_sdl3.a"
 )
 FRAMEWORKS=(
-  -framework QuartzCore -framework OpenGL -framework IOKit -weak_framework Metal
-  -L/opt/homebrew/lib -Wl,-rpath,/opt/homebrew/lib
-  -Wl,-framework,CoreMedia -Wl,-framework,CoreVideo -Wl,-framework,Cocoa
-  -Wl,-weak_framework,UniformTypeIdentifiers -Wl,-framework,IOKit
-  -Wl,-framework,ForceFeedback -Wl,-framework,Carbon -Wl,-framework,CoreAudio
-  -Wl,-framework,AudioToolbox -Wl,-framework,AVFoundation -Wl,-framework,Foundation
-  -Wl,-framework,GameController -Wl,-framework,Metal -Wl,-framework,QuartzCore
-  -Wl,-weak_framework,CoreHaptics
-  -framework Cocoa -lSDL3 -lpthread -lm -framework OpenGL -framework CoreMIDI
-  -framework AudioUnit -framework AudioToolbox -framework CoreAudio -framework CoreServices
+  -Wl,-framework,CoreMedia -Wl,-framework,CoreVideo -Wl,-framework,Foundation
+  -Wl,-framework,CoreAudio -Wl,-framework,AudioToolbox
+  -framework CoreMIDI -framework CoreServices -framework IOKit
+  -framework ApplicationServices
+  -lpthread -lm
 )
 
-echo "[1/3] compiling awm2_plugin.cpp"
+echo "[1/3] compiling awm2_plugin.cpp + osd_stubs.cpp"
 clang++ "${CXXFLAGS[@]}" -c "$ROOT/src/dsp/awm2_plugin.cpp" -o "$OUT/awm2_plugin.o"
+clang++ "${CXXFLAGS[@]}" -c "$HERE/osd_stubs.cpp" -o "$OUT/osd_stubs.o"
 
-echo "[2/3] linking dsp.dylib"
+echo "[2/3] linking dsp.dylib (SDL-free)"
 clang++ -dynamiclib -o "$OUT/dsp.dylib" \
-  "$OUT/awm2_plugin.o" "${MAME_MAIN_OBJS[@]}" \
+  "$OUT/awm2_plugin.o" "$OUT/osd_stubs.o" "${MAME_MAIN_OBJS[@]}" \
   -L"$REL" -L"$REL/mame_mame" -m64 -arch arm64 \
   "${LIBS[@]}" "${FRAMEWORKS[@]}"
 

@@ -116,6 +116,11 @@ private:
 // ----------------------------------------------------------------------------
 // Headless OSD base: boots mu100 with no SDL UI and forwards the SWP30 stereo
 // master mix to on_audio(). Subclass for capture (file) or streaming (module).
+//
+// The vendored MAME tree's register_options() is patched to register only a
+// minimal SDL-free provider set (incl. a headless monitor), so this links with
+// no libSDL3/OpenGL/bgfx/CoreAudio — a self-contained dsp.so like the other
+// Move modules. See patches/0002-headless-sdl-free-osd.patch.
 // ----------------------------------------------------------------------------
 class Mu100OsdBase : public osd_common_t
 {

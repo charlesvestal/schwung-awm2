@@ -40,8 +40,9 @@ CXXFLAGS=(
   -I"$MAME_ROOT/3rdparty/flac/include"
 )
 
-echo "[1/2] compiling awm2_host.cpp"
+echo "[1/2] compiling awm2_host.cpp + osd_stubs.cpp"
 clang++ "${CXXFLAGS[@]}" -c "$HERE/awm2_host.cpp" -o "$OUT/awm2_host.o"
+clang++ "${CXXFLAGS[@]}" -c "$HERE/osd_stubs.cpp" -o "$OUT/osd_stubs.o"
 
 # --- link (mirrors MAME's executable link line, minus its main object) -------
 # emulator_info implementations + the driver list come from these MAME objects.
@@ -58,7 +59,6 @@ LIBS=(
   "$REL/mame_mame/liboptional.a"
   "$REL/libemu.a"
   "$REL/libosd_sdl3.a"
-  "$REL/libqtdbg_sdl3.a"
   "$REL/mame_mame/libformats.a"
   "$REL/mame_mame/libdasm.a"
   "$REL/libutils.a"
@@ -79,28 +79,23 @@ LIBS=(
   "$REL/libsqlite3.a"
   "$REL/libportaudio.a"
   "$REL/libportmidi.a"
-  "$REL/libbgfx.a"
-  "$REL/libbimg.a"
-  "$REL/libbx.a"
   "$REL/libocore_sdl3.a"
 )
 
-echo "[2/2] linking awm2_host"
+# SDL-free: with the minimal register_options() override no SDL/bgfx modules are
+# pulled, so libSDL3/libbgfx/libbimg/libbx/libqtdbg and the GUI frameworks drop
+# out. This mirrors the self-contained aarch64 dsp.so.
+echo "[2/2] linking awm2_host (SDL-free)"
 clang++ -o "$OUT/awm2_host" \
-  "$OUT/awm2_host.o" \
+  "$OUT/awm2_host.o" "$OUT/osd_stubs.o" \
   "${MAME_MAIN_OBJS[@]}" \
   -L"$REL" -L"$REL/mame_mame" \
   -m64 -arch arm64 \
   "${LIBS[@]}" \
-  -framework QuartzCore -framework OpenGL -framework IOKit -weak_framework Metal \
-  -L/opt/homebrew/lib -Wl,-rpath,/opt/homebrew/lib \
-  -Wl,-framework,CoreMedia -Wl,-framework,CoreVideo -Wl,-framework,Cocoa \
-  -Wl,-weak_framework,UniformTypeIdentifiers -Wl,-framework,IOKit \
-  -Wl,-framework,ForceFeedback -Wl,-framework,Carbon -Wl,-framework,CoreAudio \
-  -Wl,-framework,AudioToolbox -Wl,-framework,AVFoundation -Wl,-framework,Foundation \
-  -Wl,-framework,GameController -Wl,-framework,Metal -Wl,-framework,QuartzCore \
-  -Wl,-weak_framework,CoreHaptics \
-  -framework Cocoa -lSDL3 -lpthread -lm -framework OpenGL -framework CoreMIDI \
-  -framework AudioUnit -framework AudioToolbox -framework CoreAudio -framework CoreServices
+  -Wl,-framework,CoreMedia -Wl,-framework,CoreVideo \
+  -Wl,-framework,Foundation -Wl,-framework,CoreAudio -Wl,-framework,AudioToolbox \
+  -framework CoreMIDI -framework CoreServices -framework IOKit \
+  -framework ApplicationServices \
+  -lpthread -lm
 
 echo "built: $OUT/awm2_host"
