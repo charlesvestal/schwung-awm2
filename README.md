@@ -5,13 +5,21 @@ hardware emulation (Hitachi H8 + Yamaha SWP30) via a vendored MAME core, giving
 the authentic XG sound *and effects* (reverb / chorus / variation) that a
 soundfont can't reproduce.
 
-**Status:** feasibility complete — see `docs/`. Module build in progress.
+**Status:** functionally complete but **NOT realtime on the CM4** — see
+[`STATUS.md`](STATUS.md). The module builds, deploys, boots the MU100 firmware,
+loads the wave ROMs, and plays correct XG audio with live MIDI/params — but the
+emulation runs at only **~64–71% of realtime** on one Cortex-A72 core, so
+sustained audio glitches. Not yet a usable instrument.
 
 - Sound quality: the one MAME SWP30 click bug is fixed
   (`patches/0001-swp30-saturate-interpolation.patch`; upstreamed as
   [mamedev/mame#15505](https://github.com/mamedev/mame/pull/15505)).
-- Performance: fits the CM4 Move (~0.5–0.9 of one A72 core; 4 cores available).
-- DRC/JIT confirmed working on-device.
+- Performance: the wall is MAME's interpreted **H8 CPU** (~50% of the work, no
+  JIT in MAME). NOTE: the original feasibility gate predicted ~0.5–0.9 of one
+  core — that estimate was **wrong by ~2×**; a synthetic microbench badly
+  under-predicted the branchy, cache-bound interpreter on the A72. Reaching
+  realtime needs a leaner H8 interpreter (see `STATUS.md` → Next steps).
+- Self-contained aarch64 `dsp.so` cross-build pipeline works (`scripts/`).
 
 ## ROMs (user-supplied)
 
