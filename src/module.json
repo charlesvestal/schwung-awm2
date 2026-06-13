@@ -1,0 +1,43 @@
+{
+  "id": "awm2",
+  "name": "AWM2 (MU100)",
+  "abbrev": "XG",
+  "version": "0.0.1",
+  "description": "Yamaha MU100 AWM2/XG tone generator (H8 + SWP30 emulation via MAME). Requires user-supplied MU100 ROMs.",
+  "author": "Yamaha (emulation: MAME / O. Galibert; port: charlesvestal)",
+  "license": "GPL-2.0 (MAME-derived)",
+  "dsp": "dsp.so",
+  "api_version": 2,
+  "standalone": false,
+  "requires": "MU100 program + wave ROMs (~26MB, MAME 'mu100' romset; user-supplied)",
+  "capabilities": {
+    "audio_out": true,
+    "audio_in": false,
+    "midi_in": true,
+    "midi_out": false,
+    "aftertouch": true,
+    "chainable": true,
+    "component_type": "sound_generator",
+    "ui_hierarchy": {
+      "levels": {
+        "root": {
+          "params": [
+            { "key": "program", "label": "Voice", "type": "int", "min": 0, "max": 127, "default": 0 },
+            { "key": "bank_msb", "label": "Bank MSB", "type": "int", "min": 0, "max": 127, "default": 0 },
+            { "key": "bank_lsb", "label": "Bank LSB", "type": "int", "min": 0, "max": 127, "default": 0 },
+            { "key": "reverb_send", "label": "Reverb", "type": "float", "min": 0.0, "max": 1.0, "default": 0.31, "step": 0.02, "unit": "%" },
+            { "key": "chorus_send", "label": "Chorus", "type": "float", "min": 0.0, "max": 1.0, "default": 0.0, "step": 0.02, "unit": "%" },
+            { "key": "variation_send", "label": "Variation", "type": "float", "min": 0.0, "max": 1.0, "default": 0.0, "step": 0.02, "unit": "%" },
+            { "key": "cutoff", "label": "Cutoff", "type": "float", "min": 0.0, "max": 1.0, "default": 0.5, "step": 0.02, "unit": "%" },
+            { "key": "resonance", "label": "Resonance", "type": "float", "min": 0.0, "max": 1.0, "default": 0.5, "step": 0.02, "unit": "%" },
+            { "key": "attack", "label": "Attack", "type": "float", "min": 0.0, "max": 1.0, "default": 0.5, "step": 0.02, "unit": "%" },
+            { "key": "release", "label": "Release", "type": "float", "min": 0.0, "max": 1.0, "default": 0.5, "step": 0.02, "unit": "%" },
+            { "key": "volume", "label": "Volume", "type": "float", "min": 0.0, "max": 1.0, "default": 0.8, "step": 0.02, "unit": "%" }
+          ],
+          "knobs": ["program", "reverb_send", "chorus_send", "variation_send", "cutoff", "resonance", "attack", "release"],
+          "label": "AWM2"
+        }
+      }
+    }
+  }
+}
