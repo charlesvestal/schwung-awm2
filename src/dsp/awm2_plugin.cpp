@@ -9,6 +9,13 @@
 //
 // Shares the OSD/MIDI core with the off-device harness (../../host/mu100_osd.h).
 
+#ifdef __linux__
+#define _GNU_SOURCE 1
+#include <pthread.h>
+#include <sched.h>
+#include <unistd.h>
+#endif
+
 #include "mu100_osd.h"
 #include "frontend/mame/clifront.h"      // cli_frontend
 
@@ -197,12 +204,46 @@ struct Awm2Instance {
 
 	Params            params;
 
+	// Pin the emulation thread to a dedicated core and request SCHED_FIFO. On the
+	// CM4 this lifts uncontended throughput markedly (~56%->~69% in tests).
+	// Affinity needs no privilege; RT needs an rtprio limit (best-effort, ignored
+	// if denied). Overridable via AWM2_CPU / AWM2_RTPRIO.
+	static void pin_and_rt_self()
+	{
+#ifdef __linux__
+		long nc = sysconf(_SC_NPROCESSORS_ONLN);
+		int core = (nc > 1) ? int(nc - 1) : 0;
+		if (const char *e = getenv("AWM2_CPU")) core = atoi(e);
+		cpu_set_t cs; CPU_ZERO(&cs); CPU_SET(core, &cs);
+		pthread_setaffinity_np(pthread_self(), sizeof(cs), &cs);
+		int prio = 70; if (const char *e = getenv("AWM2_RTPRIO")) prio = atoi(e);
+		if (prio > 0) {
+			sched_param sp{}; sp.sched_priority = prio;
+			hlog(pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp) == 0
+				? "awm2: emulation thread pinned + SCHED_FIFO"
+				: "awm2: emulation thread pinned (RT denied; normal prio)");
+		}
+#endif
+	}
+
 	void run_mame()
 	{
+		pin_and_rt_self();
 		setenv("SDL_VIDEODRIVER", "dummy", 0);
+		// Search both the module's roms/ subdir (install convention) and the
+		// module dir itself for the user-supplied romset (mu100/swp30/mulcd .zip).
+		const std::string rompath = module_dir + "/roms;" + module_dir;
+		// Prefer the screenless mu100b (identical XG engine, no LCD/SVG rendering
+		// = less CPU) when its romset is present; otherwise the standard mu100.
+		auto have = [&](const char *z) {
+			for (const std::string &d : { module_dir + "/roms/", module_dir + "/" }) {
+				FILE *f = fopen((d + z).c_str(), "rb"); if (f) { fclose(f); return true; }
+			} return false;
+		};
+		const char *machine = have("mu100b.zip") ? "mu100b" : "mu100";
 		std::vector<std::string> args = {
-			"awm2", "mu100",
-			"-rompath", module_dir,
+			"awm2", machine,
+			"-rompath", rompath,
 			"-video", "none", "-sound", "none",
 			"-nothrottle",
 			"-samplerate", std::to_string(MOVE_SAMPLE_RATE),
