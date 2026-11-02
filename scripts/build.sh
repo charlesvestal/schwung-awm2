@@ -140,6 +140,18 @@ ARLIBS=$(find "$MAME/scripts" -name '*.a' ! -name 'libbgfx.a' ! -name 'libbimg.a
 
 # --- 5. package --------------------------------------------------------------
 cp src/module.json dist/awm2/module.json
+# Licence texts. dsp.so is built from MAME and links its third-party libraries,
+# whose notices must travel with the binary; MAME's own COPYING says its legal
+# texts belong in "source and binary distributions". Copied from the same MAME
+# tree the libraries were just built from. Deliberately unconditional: a
+# missing file must fail the build, not ship a tarball without its licence.
+rm -rf dist/awm2/licenses
+mkdir -p dist/awm2/licenses/mame/legal
+cp LICENSE dist/awm2/LICENSE
+cp licenses/NOTICE.txt dist/awm2/licenses/NOTICE.txt
+cp "$MAME/COPYING" dist/awm2/licenses/mame/COPYING
+cp "$MAME"/docs/legal/* dist/awm2/licenses/mame/legal/
+cp "$MAME/3rdparty/ymfm/LICENSE" dist/awm2/licenses/ymfm-LICENSE
 mkdir -p dist/awm2/roms
 ( cd dist && tar -czf awm2-module.tar.gz awm2/ )
 echo ""

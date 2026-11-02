@@ -5,7 +5,7 @@
   "version": "0.0.1",
   "description": "Yamaha MU100 AWM2/XG tone generator (H8 + SWP30 emulation via MAME). Requires user-supplied MU100 ROMs.",
   "author": "Yamaha (emulation: MAME / O. Galibert; port: charlesvestal)",
-  "license": "GPL-2.0 (MAME-derived)",
+  "license": "GPL-2.0-or-later",
   "dsp": "dsp.so",
   "api_version": 2,
   "standalone": false,

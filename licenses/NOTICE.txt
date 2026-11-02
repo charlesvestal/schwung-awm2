@@ -1,0 +1,37 @@
+AWM2 (MU100) for Schwung (module id: awm2)
+
+This module is distributed under the GNU General Public License, version 2
+or (at your option) any later version (GPL-2.0-or-later). The text of
+version 2 is in LICENSE.
+
+dsp.so is built from MAME 0.288 (https://github.com/mamedev/mame, tag
+mame0288), patched with this repository's patches/*.patch, and links MAME's
+mu100 subtarget libraries. MAME states that "the MAME project as a whole is
+made available under the terms of the GNU General Public License, version 2
+or later (GPL-2.0+)", and this module follows it.
+
+Individual MAME source files carry their own licences in their
+"// license:" headers. In the libraries this module links, nearly all of them
+(the emulator core, the mu100 driver, the H8 CPU and SWP30 sound devices) are
+BSD-3-Clause; a few are LGPL-2.1+, MIT or public domain. The bundled
+third-party libraries (asmjit, FLAC, zstd, expat, Lua, SQLite, utf8proc,
+LZMA SDK, zlib, libjpeg, PortMidi, linenoise, WDL fft, SoftFloat 3, ymfm)
+carry GPL-compatible permissive licences. Every one of these terms permits
+distribution of the combined binary under GPL-2.0-or-later.
+
+Files in this directory:
+
+  mame/COPYING   MAME's copyright and licence notice, with the attribution
+                 notices for its third-party code, copied from the MAME tree
+                 the module was built from.
+  mame/legal/    MAME's docs/legal: the full texts of every licence the
+                 above refers to (BSD-2-Clause, BSD-3-Clause, BSL-1.0, CC0,
+                 GPL-2.0, LGPL-2.1, MIT, Zlib).
+  ymfm-LICENSE   ymfm (Aaron Giles), BSD-3-Clause.
+
+Corresponding source: this repository at the release tag, together with MAME
+tag mame0288, to which scripts/build.sh applies patches/*.patch.
+
+MU100 and AWM2 are trademarks of Yamaha Corporation. MAME is a registered
+trademark of Gregory Ember. No Yamaha ROMs ship with this module; they are
+supplied by the user.
